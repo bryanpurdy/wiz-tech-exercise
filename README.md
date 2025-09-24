@@ -1,3 +1,43 @@
+# Wiz Technical Exercise – Tasky App Deployment
+
+This repository contains the deliverables for the Wiz technical exercise. It demonstrates containerization, Kubernetes deployment, Terraform-based infrastructure provisioning, and DevSecOps CI/CD integration.
+
+---
+
+## 🚀 Overview
+- **Application:** Tasky (Go web app)
+- **Containerization:** Docker with embedded `wizexercise.txt`
+- **Infrastructure:** AWS VPC, EKS cluster, EC2-hosted MongoDB, S3 bucket, and ECR repo
+- **Orchestration:** Kubernetes manifests for Tasky (Deployment, Service, Ingress, RBAC, Secrets)
+- **CI/CD:** GitHub Actions workflow that builds and pushes images to Amazon ECR
+
+---
+
+## 📂 Repo Structure
+tasky-main/
+├── Dockerfile
+├── wizexercise.txt
+├── infra/ # Terraform modules
+│ ├── provider.tf
+│ ├── variables.tf
+│ ├── vpc.tf
+│ ├── eks.tf
+│ ├── ec2-mongo.tf
+│ ├── s3.tf
+│ └── ecr.tf
+├── k8s/ # Kubernetes manifests
+│ ├── namespace.yaml
+│ ├── secret-mongo.yaml
+│ ├── deployment.yaml
+│ ├── service.yaml
+│ ├── ingress.yaml
+│ └── rbac.yaml
+└── .github/workflows/ # CI/CD pipeline
+└── build-and-publish.yml
+
+
+
+# Provided Instructions
 # Docker
 A Dockerfile has been provided to run this application.  The default port exposed is 8080.
 
