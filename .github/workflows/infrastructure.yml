@@ -33,7 +33,7 @@ jobs:
         with:
           directory: infra/
           framework: terraform
-          soft_fail: true # Set to false in production
+          soft_fail: true # Set to false in productions
           output_format: sarif
           output_file_path: checkov-results.sarif
 
