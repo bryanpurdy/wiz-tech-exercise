@@ -22,13 +22,33 @@ jobs:
   security-scan:
     name: Security Scan Application
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Build Docker image for scanning
         run: |
+          cd app
           docker build -t $ECR_REPOSITORY:$GITHUB_SHA .
+
+      - name: Run Hadolint Dockerfile Linting
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: app/Dockerfile
+          format: sarif
+          output-file: hadolint-results.sarif
+          no-fail: true
+
+      - name: Upload Hadolint results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: hadolint-results.sarif
+          category: hadolint
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
@@ -42,20 +62,23 @@ jobs:
         if: always()
         with:
           sarif_file: 'trivy-results.sarif'
+          category: trivy
 
-      - name: Run Hadolint Dockerfile Linting
-        uses: hadolint/hadolint-action@v3.1.0
+      - name: Run Snyk to check for vulnerabilities
+        uses: snyk/actions/docker@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
-          dockerfile: Dockerfile
-          format: sarif
-          output-file: hadolint-results.sarif
-          no-fail: true
+          image: '${{ env.ECR_REPOSITORY }}:${{ github.sha }}'
+          args: --file=app/Dockerfile --sarif-file-output=snyk-results.sarif
+        continue-on-error: true
 
-      - name: Upload Hadolint results
+      - name: Upload Snyk results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
-          sarif_file: hadolint-results.sarif
+          sarif_file: snyk-results.sarif
+          category: snyk
 
   build-and-push:
     name: Build and Push Container
@@ -84,8 +107,16 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          cd app
+          
+          # Build with proper platform for EKS
+          docker build --platform linux/amd64 -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker build --platform linux/amd64 -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
+          
+          # Push images
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          
           echo "tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
@@ -112,17 +143,36 @@ jobs:
       - name: Deploy to Kubernetes
         env:
           IMAGE_TAG: ${{ needs.build-and-push.outputs.image-tag }}
+          ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
         run: |
           # Update image tag in Kubernetes manifests
-          sed -i "s|IMAGE_TAG_PLACEHOLDER|$IMAGE_TAG|g" k8s/*.yaml
+          find k8s/ -name "*.yaml" -exec sed -i "s|IMAGE_TAG_PLACEHOLDER|$IMAGE_TAG|g" {} \;
+          find k8s/ -name "*.yaml" -exec sed -i "s|ECR_REGISTRY_PLACEHOLDER|$ECR_REGISTRY|g" {} \;
           
           # Apply Kubernetes manifests
-          kubectl apply -f k8s/
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/secret.yaml
+          kubectl apply -f k8s/rbac.yaml
+          kubectl apply -f k8s/deployment.yaml
+          kubectl apply -f k8s/service.yaml
+          kubectl apply -f k8s/ingress.yaml
           
           # Wait for deployment
           kubectl rollout status deployment/tasky -n tasky --timeout=300s
 
       - name: Verify deployment
         run: |
-          kubectl get pods -n tasky
-          kubectl get services -n tasky
+          echo "=== Pods Status ==="
+          kubectl get pods -n tasky -o wide
+          
+          echo "=== Service Status ==="
+          kubectl get svc -n tasky
+          
+          echo "=== Ingress Status ==="
+          kubectl get ingress -n tasky
+          
+          echo "=== Application Logs ==="
+          kubectl logs -n tasky deployment/tasky --tail=20
+          
+          echo "=== MongoDB Connection Test ==="
+          kubectl logs -n tasky deployment/tasky | grep -i mongo || echo "No MongoDB logs found"
