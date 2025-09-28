@@ -16,7 +16,7 @@ resource "aws_s3_bucket_public_access_block" "wiz_bucket_pab" {
 }
 
 resource "aws_s3_bucket_policy" "wiz_bucket_policy" {
-  bucket = aws_s3_bucket.wiz_bucket.id
+  bucket     = aws_s3_bucket.wiz_bucket.id
   depends_on = [aws_s3_bucket_public_access_block.wiz_bucket_pab]
 
   policy = jsonencode({

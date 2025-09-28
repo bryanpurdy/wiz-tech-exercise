@@ -1,6 +1,6 @@
 resource "null_resource" "build_and_push_image" {
   depends_on = [aws_ecr_repository.tasky]
-  
+
   triggers = {
     dockerfile_hash = filesha256("${path.module}/../Dockerfile")
     main_go_hash    = filesha256("${path.module}/../main.go")
