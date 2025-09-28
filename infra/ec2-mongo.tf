@@ -1,3 +1,9 @@
+# Variable for SSH public key
+variable "ssh_public_key" {
+  description = "SSH public key for EC2 access"
+  type        = string
+}
+
 # Get latest Ubuntu 20.04 AMI (1+ year outdated as required)
 data "aws_ami" "ubuntu_20_04" {
   most_recent = true
@@ -61,7 +67,7 @@ resource "aws_iam_instance_profile" "mongo_profile" {
 
 resource "aws_key_pair" "bryan" {
   key_name   = "bryan-key"
-  public_key = file("~/.ssh/bryan-key.pub")
+  public_key = var.ssh_public_key
 }
 
 resource "aws_security_group" "mongo_sg" {
