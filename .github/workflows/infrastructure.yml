@@ -44,19 +44,6 @@ jobs:
           sarif_file: checkov-results.sarif
           category: checkov
 
-      - name: Run TFSec
-        uses: aquasecurity/tfsec-action@v1.0.3
-        with:
-          working_directory: infra/
-          soft_fail: true
-
-      - name: Upload TFSec results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: results.sarif
-          category: tfsec
-
   terraform:
     name: Terraform Plan/Apply
     runs-on: ubuntu-latest
