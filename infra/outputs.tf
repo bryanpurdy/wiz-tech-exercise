@@ -18,21 +18,6 @@ output "eks_cluster_endpoint" {
   value = module.eks.cluster_endpoint
 }
 
-# EKS Cluster Endpoint Public Access
-output "eks_cluster_endpoint_public_access" {
-  value = module.eks.cluster_endpoint_public_access
-}
-
-# EKS Cluster Endpoint Private Access
-output "eks_cluster_endpoint_private_access" {
-  value = module.eks.cluster_endpoint_private_access
-}
-
-# Public cidr
-output "eks_cluster_public_access_cidrs" {
-  value = module.eks.cluster_endpoint_public_access_cidrs
-}
-
 # Mongo Instance ID
 output "mongo_instance_id_a" {
   value = aws_instance.mongo.id
