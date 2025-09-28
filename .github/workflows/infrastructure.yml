@@ -34,7 +34,7 @@ jobs:
           output_file_path: checkov-results.sarif
 
       - name: Upload Checkov results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: checkov-results.sarif
@@ -67,7 +67,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-2
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Terraform Format Check
         run: terraform fmt -check=true -diff=true
