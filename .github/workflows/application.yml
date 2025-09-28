@@ -4,12 +4,16 @@ on:
   push:
     branches: [ main ]
     paths: 
-      - 'app/**'
+      - 'Dockerfile'
+      - 'main.go'
+      - '*.go'
       - 'k8s/**'
   pull_request:
     branches: [ main ]
     paths:
-      - 'app/**' 
+      - 'Dockerfile'
+      - 'main.go'
+      - '*.go'
       - 'k8s/**'
   workflow_dispatch:
 
@@ -32,13 +36,12 @@ jobs:
 
       - name: Build Docker image for scanning
         run: |
-          cd app
           docker build -t $ECR_REPOSITORY:$GITHUB_SHA .
 
       - name: Run Hadolint Dockerfile Linting
         uses: hadolint/hadolint-action@v3.1.0
         with:
-          dockerfile: app/Dockerfile
+          dockerfile: Dockerfile
           format: sarif
           output-file: hadolint-results.sarif
           no-fail: true
@@ -107,8 +110,6 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          cd app
-          
           # Build with proper platform for EKS
           docker build --platform linux/amd64 -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker build --platform linux/amd64 -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
