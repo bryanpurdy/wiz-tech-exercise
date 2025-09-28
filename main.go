@@ -1,7 +1,5 @@
 package main
 
-echo "// Pipeline test" >> main.go
-
 import (
 	"net/http"
 	controller "github.com/jeffthorne/tasky/controllers"
