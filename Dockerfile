@@ -25,6 +25,6 @@ COPY wizexercise.txt /wizexercise.txt
 COPY --from=builder /app/tasky .
 COPY --from=builder /app/assets ./assets
 
-EXPOSE 3000
+EXPOSE 8080
 
 CMD ["./tasky"]
