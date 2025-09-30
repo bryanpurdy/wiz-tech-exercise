@@ -1,5 +1,6 @@
 name: Application Build & Deploy
 
+# Triggers: When to run this pipeline
 on:
   push:
     branches: [ main ]
@@ -15,44 +16,50 @@ on:
       - 'main.go'
       - '*.go'
       - 'k8s/**'
-  workflow_dispatch:
+  workflow_dispatch:  # Allows manual triggering from GitHub UI
 
+# Environment variables used across all jobs
 env:
   AWS_REGION: us-east-2
   ECR_REPOSITORY: tasky
   EKS_CLUSTER_NAME: wiz-eks-cluster
 
 jobs:
+  # Job 1: Security scanning before building/deploying
   security-scan:
     name: Security Scan Application
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      security-events: write
+      security-events: write  # Required to upload scan results to Security tab
       actions: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Build image locally for scanning (not pushed to ECR yet)
       - name: Build Docker image for scanning
         run: |
           docker build -t $ECR_REPOSITORY:$GITHUB_SHA .
 
+      # Hadolint: Dockerfile linter checking for best practices
       - name: Run Hadolint Dockerfile Linting
         uses: hadolint/hadolint-action@v3.1.0
         with:
           dockerfile: Dockerfile
-          format: sarif
+          format: sarif  # Security Alert format for GitHub
           output-file: hadolint-results.sarif
-          no-fail: true
+          no-fail: true  # Don't block pipeline on findings (demo purposes)
 
+      # Upload Hadolint results to GitHub Security tab
       - name: Upload Hadolint results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: always()  # Run even if previous steps fail
         with:
           sarif_file: hadolint-results.sarif
           category: hadolint
 
+      # Trivy: Scan container image for CVE vulnerabilities
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
@@ -60,6 +67,7 @@ jobs:
           format: 'sarif'
           output: 'trivy-results.sarif'
 
+      # Upload Trivy results to GitHub Security tab
       - name: Upload Trivy scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
         if: always()
@@ -67,18 +75,18 @@ jobs:
           sarif_file: 'trivy-results.sarif'
           category: trivy
 
-
-
+  # Job 2: Build container and push to ECR
   build-and-push:
     name: Build and Push Container
     runs-on: ubuntu-latest
-    needs: security-scan
+    needs: security-scan  # Wait for security scan to complete
     outputs:
-      image-tag: ${{ steps.image.outputs.tag }}
+      image-tag: ${{ steps.image.outputs.tag }}  # Pass image tag to deploy job
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Authenticate to AWS using secrets
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -86,36 +94,41 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      # Login to ECR to enable docker push
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      # Build for linux/amd64 (EKS runs on x86), tag with git SHA and latest
       - name: Build, tag, and push image to Amazon ECR
         id: image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
+          IMAGE_TAG: ${{ github.sha }}  # Use git commit SHA for versioning
         run: |
           # Build with proper platform for EKS
           docker build --platform linux/amd64 -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker build --platform linux/amd64 -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
           
-          # Push images
+          # Push both tagged and latest images
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
           
+          # Output image tag for next job
           echo "tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
+  # Job 3: Deploy to Kubernetes
   deploy:
     name: Deploy to Kubernetes
     runs-on: ubuntu-latest
-    needs: build-and-push
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    needs: build-and-push  # Wait for image to be pushed
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')  # Only deploy from main branch
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Authenticate to AWS
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -123,10 +136,12 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      # Configure kubectl to connect to EKS cluster
       - name: Update kubeconfig
         run: |
           aws eks update-kubeconfig --region $AWS_REGION --name $EKS_CLUSTER_NAME
 
+      # Replace placeholder values in YAML and apply to cluster
       - name: Deploy to Kubernetes
         env:
           IMAGE_TAG: ${{ needs.build-and-push.outputs.image-tag }}
@@ -136,7 +151,7 @@ jobs:
           find k8s/ -name "*.yaml" -exec sed -i "s|IMAGE_TAG_PLACEHOLDER|$IMAGE_TAG|g" {} \;
           find k8s/ -name "*.yaml" -exec sed -i "s|ECR_REGISTRY_PLACEHOLDER|$ECR_REGISTRY|g" {} \;
           
-          # Apply Kubernetes manifests
+          # Apply Kubernetes manifests in order
           kubectl apply -f k8s/namespace.yaml
           kubectl apply -f k8s/secret-mongo.yaml
           kubectl apply -f k8s/rbac.yaml
@@ -144,9 +159,10 @@ jobs:
           kubectl apply -f k8s/service.yaml
           kubectl apply -f k8s/ingress.yaml
           
-          # Wait for deployment
+          # Wait for deployment to complete (5 min timeout)
           kubectl rollout status deployment/tasky -n tasky --timeout=300s
 
+      # Verify deployment succeeded
       - name: Verify deployment
         run: |
           echo "=== Pods Status ==="
